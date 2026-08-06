@@ -1,0 +1,20 @@
+{
+  "name": "pi-init-extension",
+  "version": "1.0.0",
+  "description": "/init 命令：为仓库创建或更新 AGENTS.md（中文版，改编自 opencode 的 /init）",
+  "license": "MIT",
+  "private": true,
+  "keywords": ["pi-package"],
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aiCane/pi-extension-init.git"
+  },
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
