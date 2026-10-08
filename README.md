@@ -7,14 +7,14 @@
 ## 安装
 
 ```bash
-# 固定版本（推荐）
-pi install git:github.com/aiCane/pi-extension-init@v1.0.0
+# npm（推荐）
+pi install npm:@niliy/pi-init
 
-# 或跟随 main 分支
-pi install https://github.com/aiCane/pi-extension-init
+# 或跟随 git main 分支（开发快照，不与 npm 版本对齐）
+pi install git:github.com/aiCane/pi-extension-init
 
 # 或临时试用（不写入配置，仅本次运行生效）
-pi -e git:github.com/aiCane/pi-extension-init
+pi -e npm:@niliy/pi-init
 ```
 
 安装后执行 `/reload` 热加载，或重启 pi。
