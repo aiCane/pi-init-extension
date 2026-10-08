@@ -71,10 +71,9 @@ npm pack --dry-run   # 先看包名与 tarball 内容
 npm publish --access public
 ```
 
-- npm 包名 `@niliy/pi-init`（scope 是发布用的 npm 账号 `niliy`），GitHub 仓库是 `aiCane/pi-extension-init`，两者不同名是正常的。
+- npm 包名 `@niliy/pi-init`（scope 是发布用的 npm 账号 `niliy`），GitHub 仓库是 `aiCane/pi-init-extension`，两者不同名是正常的。
 - 为什么必须带 scope：unscoped 的 `pi-init` 和 `pi-init-extension` 都已被其他人占用，而且都是生成 AGENTS.md 的同类工具；不带 scope 的 `npm install pi-init` 装到的是别人的包。
+- 陷阱：GitHub 仓库叫 `aiCane/pi-init-extension`，与 npm 上被第三方占用的包 `pi-init-extension` 同名但毫无关系。README 里的仓库 URL 不能当 npm 包名用。
 - 版本号只在 npm 上递增；git 分支是开发快照。历史 tag `v1.0.0` / `v1.1.0` 是旧分发方式的遗留物，README 不再引用，无需再对齐。
 - scoped 包必须带 `--access public`，否则会因默认私有而发布失败（免费账号）。且 scope 必须属于发布者账号，否则报 `E404 Scope not found`。
 - `files` 只放 `extensions`：`AGENTS.md` 是给仓库看的，不进 tarball。
-
-注意两个名字不一致：`package.json` 的 `name` 和 README 标题是 `pi-init-extension`，但 GitHub 仓库与所有安装 URL 是 `aiCane/pi-extension-init`（`pi install` 用后者）。`private: true`，只通过 git 分发，没有 npm 发布流程。

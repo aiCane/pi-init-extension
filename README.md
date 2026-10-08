@@ -11,7 +11,7 @@
 pi install npm:@niliy/pi-init
 
 # 或跟随 git main 分支（开发快照，不与 npm 版本对齐）
-pi install git:github.com/aiCane/pi-extension-init
+pi install git:github.com/aiCane/pi-init-extension
 
 # 或临时试用（不写入配置，仅本次运行生效）
 pi -e npm:@niliy/pi-init
