@@ -7,8 +7,13 @@
  * 并由 agent 遵循。
  *
  * 同时注册一个轻量的 `question` 工具（仿照 opencode 的 question 工具），
- * 使 /init 提示词中的「使用 question 工具」指令真正可用：
- * agent 可以向用户提出一批简短的问题。
+ * 作为「零依赖」的提问后备：
+ *   - 已安装 `@juicesharp/rpiv-ask-user-question` 时本工具让位，
+ *     /init 提示词改指 `ask_user_question`；
+ *   - 未安装时由本工具顶上；
+ *   - 无 UI 的运行（`ctx.hasUI === false`）下两者都不激活，
+ *     提示词改成「不要提问，按合理假设继续」。
+ * 因此 /init 提示词永远不会引用一个不存在的工具。
  *
  * 用法：
  *   /init                     - 创建或更新 AGENTS.md
@@ -17,6 +22,11 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+
+/** 外部提问工具的规范名：npm:@juicesharp/rpiv-ask-user-question。 */
+const EXTERNAL_ASK_TOOL = "ask_user_question";
+/** 本扩展自带的轻量提问工具名。 */
+const LOCAL_ASK_TOOL = "question";
 
 const INIT_TEMPLATE = `创建或更新本仓库的 \`AGENTS.md\`。
 
@@ -50,16 +60,7 @@ const INIT_TEMPLATE = `创建或更新本仓库的 \`AGENTS.md\`。
 
 好的 \`AGENTS.md\` 内容通常是需要阅读多个文件才能推断出来的来之不易的上下文。
 
-## 提问
-
-只有当仓库无法回答某个重要问题时，才向用户提问。最多用 \`question\` 工具提出一批简短的问题。
-
-好的问题：
-- 未成文的团队约定
-- 分支 / PR / 发布预期
-- 已知但未记录下来的设置或测试前置条件
-
-不要询问仓库本身已经说清楚的事情。
+__ASK_SECTION__
 
 ## 写作规则
 
@@ -82,6 +83,30 @@ const INIT_TEMPLATE = `创建或更新本仓库的 \`AGENTS.md\`。
 
 如果 \`AGENTS.md\` 已存在于项目根目录，就地改进它，而不是盲目重写。保留经验证有用的指导，删除废话或过时的论断，并与当前代码库核对一致。`;
 
+/**
+ * 「提问」一节随可用工具变化：外部工具 > 本工具 > 无 UI 时干脆不问。
+ * 外部工具（rpiv）会往系统提示词里注入自己的 guidelines，所以这一节只写约束，
+ * 不重复它的用法说明。
+ */
+function buildAskSection(askTool: string | undefined): string {
+	if (askTool === undefined) {
+		return `## 提问
+
+当前运行没有交互界面，无法向用户提问。不要调用任何提问工具，直接基于合理假设继续，并在 \`AGENTS.md\` 中把不确定的结论标注出来。`;
+	}
+
+	return `## 提问
+
+只有当仓库无法回答某个重要问题时，才向用户提问。若确实需要，用 \`${askTool}\` 工具一次性提出一批简短的问题，不要连续多次调用。
+
+好的问题：
+- 未成文的团队约定
+- 分支 / PR / 发布预期
+- 已知但未记录下来的设置或测试前置条件
+
+不要询问仓库本身已经说清楚的事情。`;
+}
+
 const QuestionItem = Type.Object({
 	question: Type.String({ description: "要问的完整问题" }),
 	header: Type.Optional(Type.String({ description: "极短标签（最多 30 个字符）" })),
@@ -102,12 +127,22 @@ export default function initExtension(pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			const focus = args.trim();
 
+			// 装了外部提问工具就引用它，否则引用本扩展自带的那个；
+			// 无 UI 时两者都不可用，索性让模型别问。
+			// 用 `getAllTools()` 判断是否存在（注册事实，不受扩展加载顺序影响），
+			// 是否真的可用还要看 `ctx.hasUI`——外部工具自己在无 UI 时会摘掉自己。
+			const askTool = !ctx.hasUI
+				? undefined
+				: pi.getAllTools().some((tool) => tool.name === EXTERNAL_ASK_TOOL)
+					? EXTERNAL_ASK_TOOL
+					: LOCAL_ASK_TOOL;
+
 			// `__USER_FOCUS__` 位于冒号行之后。带参数时变成 "\n<focus>"；
 			// 不带参数时变成 "\n\n"，与原提示词中的空行保持一致。
 			const prompt = INIT_TEMPLATE.replace(
-				"__USER_FOCUS__",
-				focus ? `\n${focus}` : "\n",
-			);
+				"__ASK_SECTION__",
+				buildAskSection(askTool),
+			).replace("__USER_FOCUS__", focus ? `\n${focus}` : "\n");
 
 			if (!ctx.isIdle()) {
 				ctx.ui.notify("Agent 正忙；/init 已排队，将在当前工作完成后执行", "warning");
@@ -119,8 +154,12 @@ export default function initExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	// 以 `defaultActive: false` 注册：本工具默认不进模型工具集，
+	// 由下面的 `before_agent_start` 对账决定是否激活。
+	// 注意不要用 `exposure: "hidden"` 当开关——`pi.setActiveTools()` 会忽略 hidden 工具。
 	pi.registerTool({
-		name: "question",
+		name: LOCAL_ASK_TOOL,
+		defaultActive: false,
 		label: "提问",
 		description:
 			'在执行过程中向用户提出一个或多个问题：收集偏好、澄清模糊的指令，或在方向上获得决策。答案以所选标签的数组形式返回。如果你推荐某个特定选项，请将其放在第一位，并在其标签后附加"（推荐）"。不要包含"其他"或兜底选项：除非 custom 为 false，否则会自动提供"输入你自己的答案"选项。',
@@ -199,5 +238,25 @@ export default function initExtension(pi: ExtensionAPI) {
 				details: { answers },
 			};
 		},
+	});
+
+	// 让位 / 复位：在每回合的工具集快照之前对账一次。
+	//
+	// 装了外部提问工具（rpiv）就摘掉本工具，避免模型看到两个「问用户」的工具；
+	// 没装则挂上本工具；无 UI 的运行两个都不要。
+	//
+	// 只读写 `LOCAL_ASK_TOOL` 自己，不碰外部工具：它有自己的 reconciler，
+	// 而且两边都重新读取 `getActiveTools()`，因此谁先谁后都不会互相覆盖。
+	pi.on("before_agent_start", (_event, ctx) => {
+		const active = pi.getActiveTools();
+		const hasLocal = active.includes(LOCAL_ASK_TOOL);
+		const wantLocal =
+			ctx.hasUI && !pi.getAllTools().some((tool) => tool.name === EXTERNAL_ASK_TOOL);
+
+		if (wantLocal && !hasLocal) {
+			pi.setActiveTools([...active, LOCAL_ASK_TOOL]);
+		} else if (!wantLocal && hasLocal) {
+			pi.setActiveTools(active.filter((name) => name !== LOCAL_ASK_TOOL));
+		}
 	});
 }
